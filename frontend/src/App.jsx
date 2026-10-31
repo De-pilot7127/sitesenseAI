@@ -1,5 +1,5 @@
 import { Routes, Route, NavLink, Navigate, useNavigate, useLocation } from 'react-router-dom'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   LayoutDashboard, FolderKanban, Camera, BrainCircuit, Boxes, Wallet, FileText,
@@ -13,6 +13,7 @@ import {
   AreaChart, Area, LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid,
   Tooltip, ResponsiveContainer, PieChart, Pie, Cell
 } from 'recharts'
+import { api } from './services/api'
 
 const projects = [
   { name: 'One Riverside Towers', location: 'Westlands, Nairobi', completion: 68, budget: 'KES 48.2M', health: 'Good', image: 'https://images.unsplash.com/photo-1486406146926-c627a92ad1ab?w=900' },
@@ -155,7 +156,34 @@ function Projects(){const [view,setView]=useState('grid'),[modal,setModal]=useSt
 function DataTable(){return <div className="data-table"><table><thead><tr><th>Project</th><th>Location</th><th>Budget</th><th>Progress</th><th>Status</th></tr></thead><tbody>{projects.map(p=><tr key={p.name}><td><strong>{p.name}</strong></td><td>{p.location}</td><td>{p.budget}</td><td>{p.completion}%</td><td><span className={`health-tag ${p.health==='At Risk'?'risk':''}`}>{p.health}</span></td></tr>)}</tbody></table></div>}
 function Modal({open,close,title,children}){return <AnimatePresence>{open&&<><motion.div className="modal-backdrop" initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}} onClick={close}/><motion.div className="modal" initial={{opacity:0,scale:.96,y:20}} animate={{opacity:1,scale:1,y:0}} exit={{opacity:0,scale:.96}}><div className="modal-head"><h3>{title}</h3><button onClick={close}><X/></button></div>{children}</motion.div></>}</AnimatePresence>}
 
-function AIPage(){const [chat,setChat]=useState([{role:'ai',text:'Good morning. I’m ready to analyze your active construction portfolio. Which project or operational area should we examine?'}]);const [input,setInput]=useState('');const send=(text)=>{const prompt=text||input;if(!prompt)return;setChat([...chat,{role:'user',text:prompt},{role:'ai',text:'This is a demo analysis response. Connect the FastAPI backend to receive live project intelligence from Gemma.'}]);setInput('')} ;return <><PageHead eyebrow="SIGNATURE WORKSPACE" title="Sitesense Intelligence" actions={<button className="btn ghost"><Sparkles/> New analysis</button>}/><div className="ai-layout"><section className="chat-panel"><div className="chat-head"><div><span className="ai-avatar"><BrainCircuit/></span><div><strong>SiteSense AI</strong><p><i/> Intelligence assistant online</p></div></div><button><MoreHorizontal/></button></div><div className="messages">{chat.map((m,i)=><div className={`message ${m.role}`} key={i}>{m.role==='ai'&&<span><BrainCircuit/></span>}<p>{m.text}</p></div>)}</div><div className="prompts">{['Analyze project progress','Identify potential delays','Generate daily report'].map(p=><button key={p} onClick={()=>send(p)}>{p}</button>)}</div><div className="chat-input"><input value={input} onChange={e=>setInput(e.target.value)} onKeyDown={e=>e.key==='Enter'&&send()} placeholder="Ask about your construction portfolio..."/><button onClick={()=>send()}><Send/></button></div></section><aside className="analysis-side"><GlassPanel title="Site photograph analysis" subtitle="Computer vision workspace"><div className="upload-zone"><UploadCloud/><strong>Drop site photograph</strong><span>PNG, JPG or WEBP up to 20MB</span><button>Choose file</button></div><div className="caution"><ShieldCheck/><p><strong>Analysis confidence notice</strong>AI findings are observational estimates and cannot establish structural integrity, exact completion, hidden defects or safety compliance.</p></div></GlassPanel><GlassPanel title="Active prediction" subtitle="Demo intelligence signal"><div className="risk-card"><div><span className="risk-badge high">HIGH</span><strong>Concrete delivery risk</strong></div><p>Riverside Towers is trending 8% above weekly consumption.</p><button>View evidence <ChevronRight/></button></div></GlassPanel></aside></div></>}
+function AIPage(){
+  const [chat,setChat]=useState([{role:'ai',text:'Good morning. I’m ready to analyze your active construction portfolio. Which project or operational area should we examine?'}])
+  const [input,setInput]=useState('')
+  const [backendStatus,setBackendStatus]=useState('checking')
+
+  useEffect(() => {
+    api.get('/health')
+      .then(() => setBackendStatus('online'))
+      .catch(() => setBackendStatus('offline'))
+  }, [])
+
+  const send=async (text)=>{
+    const prompt=text||input
+    if(!prompt)return
+    setChat(current=>[...current,{role:'user',text:prompt}])
+    setInput('')
+    try {
+      const {data}=await api.post('/analyses',{input_text:prompt})
+      const response=[data.findings,data.recommendations].filter(Boolean).join('\n\n')
+      setChat(current=>[...current,{role:'ai',text:response || 'The backend returned an analysis without findings.'}])
+    } catch (error) {
+      const message=error.response?.data?.detail || 'Unable to reach the FastAPI backend. Start it with uvicorn main:app --reload.'
+      setChat(current=>[...current,{role:'ai',text:message}])
+      setBackendStatus('offline')
+    }
+  }
+
+  return <><PageHead eyebrow="SIGNATURE WORKSPACE" title="Sitesense Intelligence" actions={<button className="btn ghost"><Sparkles/> New analysis</button>}/><div className="ai-layout"><section className="chat-panel"><div className="chat-head"><div><span className="ai-avatar"><BrainCircuit/></span><div><strong>SiteSense AI</strong><p><i/> {backendStatus==='online'?'Intelligence assistant online':backendStatus==='checking'?'Checking backend connection':'Backend unavailable'}</p></div></div><button><MoreHorizontal/></button></div><div className="messages">{chat.map((m,i)=><div className={`message ${m.role}`} key={i}>{m.role==='ai'&&<span><BrainCircuit/></span>}<p>{m.text}</p></div>)}</div><div className="prompts">{['Analyze project progress','Identify potential delays','Generate daily report'].map(p=><button key={p} onClick={()=>send(p)}>{p}</button>)}</div><div className="chat-input"><input value={input} onChange={e=>setInput(e.target.value)} onKeyDown={e=>e.key==='Enter'&&send()} placeholder="Ask about your construction portfolio..."/><button onClick={()=>send()}><Send/></button></div></section><aside className="analysis-side"><GlassPanel title="Site photograph analysis" subtitle="Computer vision workspace"><div className="upload-zone"><UploadCloud/><strong>Drop site photograph</strong><span>PNG, JPG or WEBP up to 20MB</span><button>Choose file</button></div><div className="caution"><ShieldCheck/><p><strong>Analysis confidence notice</strong>AI findings are observational estimates and cannot establish structural integrity, exact completion, hidden defects or safety compliance.</p></div></GlassPanel><GlassPanel title="Active prediction" subtitle="Demo intelligence signal"><div className="risk-card"><div><span className="risk-badge high">HIGH</span><strong>Concrete delivery risk</strong></div><p>Riverside Towers is trending 8% above weekly consumption.</p><button>View evidence <ChevronRight/></button></div></GlassPanel></aside></div></>}
 
 function GenericPage({kind}) {
   const configs={
